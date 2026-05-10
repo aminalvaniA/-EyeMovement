@@ -4,3 +4,4 @@ numpy
 plotly
 graphviz
 streamlit-javascript
+st-gsheets-connection
