@@ -26,6 +26,24 @@ if 'risk_history' not in st.session_state:
 if 'selected_user_data' not in st.session_state:
     st.session_state.selected_user_data = None
 
+# --- کد نهایی برای اتصال زنده به گوگل‌شیت ---
+# این بخش باعث می‌شود داده‌های Nexus به محض کلیک کاربر، در شیت شما ثبت شوند
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+def save_nexus_data(data):
+    try:
+        # خواندن داده‌های فعلی برای جلوگیری از پاک شدن
+        existing_data = conn.read(worksheet="Sheet1")
+        # اضافه کردن داده‌های جدید (Nexus Telemetry)
+        new_row = pd.DataFrame([data])
+        updated_df = pd.concat([existing_data, new_row], ignore_index=True)
+        # آپدیت کردن شیت
+        conn.update(worksheet="Sheet1", data=updated_df)
+        return True
+    except Exception as e:
+        st.error(f"Errore nel salvataggio dati: {e}")
+        return False
+
 st.title("🛡️ Sistema di Intelligence Psico-Sicurezza (Protocollo Pre-Crimine Avanzato)")
 
 # --- بخش مبانی نظری و اتصال SEM ---
@@ -111,23 +129,6 @@ st.sidebar.header("🛰️ Nexus Telemetry (Dati Tecnici)")
 st.sidebar.text(f"IP: {client_ip}")
 st.sidebar.text(f"Ora d'ingresso: {st.session_state.entry_hour}:00")
 
-# --- تابع ثبت داده در Google Sheets (دیتابیس Nexus) ---
-def save_to_nexus_gsheet(data_dict):
-    try:
-        # ایجاد اتصال به شیت
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        # خواندن دیتای فعلی برای حفظ ساختار
-        existing_data = conn.read(worksheet="Sheet1")
-        new_row = pd.DataFrame([data_dict])
-        # ترکیب دیتای قدیم و جدید
-        updated_df = pd.concat([existing_data, new_row], ignore_index=True)
-        # بروزرسانی در گوگل شیت
-        conn.update(worksheet="Sheet1", data=updated_df)
-        return True
-    except Exception as e:
-        st.sidebar.error(f"Errore connessione DB: {e}")
-        return False
-
 # Monitoring
 st.header("Monitoraggio in tempo reale e analisi entropica")
 col_diag, col_input = st.columns([1, 1])
@@ -159,9 +160,9 @@ current_duration = time.time() - st.session_state.arrival_time
 # --- Executive Summary ---
 risk_score, status = get_comprehensive_risk(trauma, attachment, alexithymia, self_esteem, loss_streak, rt, base_rt, chat, hour_of_day, deposit_velocity, nudge_response_time, bet_pattern, is_device_changed, current_duration)
 
-# --- منطق ثبت خودکار در دیتابیس Nexus ---
-# آماده‌سازی ۱۶ ستون مورد نظر کاربر
-nexus_entry = {
+# آماده‌سازی ۱۶ ستون مورد نظر کاربر برای لاگ Nexus
+nexus_log = {
+    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     "user_id": f"ALVANI_{int(time.time())}", 
     "date": datetime.now().strftime("%Y-%m-%d"),
     "actual_crime_date": (datetime.now() + pd.Timedelta(days=14)).strftime("%Y-%m-%d"),
@@ -178,9 +179,14 @@ nexus_entry = {
     "nudge": nudge_response_time,
     "pattern": bet_pattern,
     "risk_score": risk_score,
-    "ip_address": client_ip,      # اضافه شده برای ردیابی فنی
-    "user_agent": user_agent      # اضافه شده برای ردیابی دستگاه
+    "ip": client_ip,
+    "user_agent": user_agent
 }
+
+# --- اجرای عملیات ذخیره‌سازی خودکار ---
+if client_ip and user_agent:
+    save_nexus_data(nexus_log)
+
 st.markdown("---")
 st.markdown("### 📋 Executive Summary del Caso Single-User")
 sum_col1, sum_col2, sum_col3 = st.columns(3)
@@ -196,7 +202,7 @@ with sum_col3:
 
 # دکمه ثبت دستی در دیتابیس (برای اطمینان محقق)
 if st.button("🚀 Registra Profilo nel Database Nexus"):
-    if save_to_nexus_gsheet(nexus_entry):
+    if save_nexus_data(nexus_log):
         st.success("Dati inviati con موفقیت!")
     else:
         st.error("Errore nell'invio dei dati.")
@@ -305,16 +311,6 @@ if uploaded:
                 "pattern": sel_row["pattern"], "text": sel_row["text"], "dev": False
             }
             st.rerun()
-
-# --- بخش ثبت نهایی در دیتابیس Nexus (مخفی) ---
-nexus_log = {
-    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    "ip": client_ip,
-    "user_agent": user_agent,
-    "risk_score": risk_score,
-    "trauma": trauma,
-    "alexithymia": alexithymia
-}
 
 # --- دکمه دانلود کد در سایدبار ---
 st.sidebar.markdown("---")
