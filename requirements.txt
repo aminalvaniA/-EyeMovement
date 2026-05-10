@@ -1,7 +1,6 @@
 streamlit
-flask
 pandas
 numpy
-scikit-learn
-requests
-cryptography
+plotly
+graphviz
+streamlit-javascript
