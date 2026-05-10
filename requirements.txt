@@ -6,3 +6,4 @@ graphviz
 streamlit-javascript
 st-gsheets-connection
 google-auth
+cryptography
