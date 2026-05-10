@@ -5,6 +5,7 @@ import plotly.express as px
 from datetime import datetime
 import graphviz 
 import time
+from streamlit_gsheets import GSheetsConnection
 # کتابخانه برای استخراج داده‌های سمت کلاینت (IP و User-Agent)
 from streamlit_javascript import st_javascript 
 
@@ -12,9 +13,7 @@ from streamlit_javascript import st_javascript
 st.set_page_config(page_title="Psycho-Security Intelligence", layout="wide")
 
 # --- بخش ردیابی خودکار و پنهان (Nexus Telemetry) ---
-# استخراج IP آدرس به صورت خودکار برای پایش پایداری جغرافیایی
 client_ip = st_javascript("await fetch('https://api.ipify.org?format=json').then(res => res.json()).then(res => res.ip)")
-# استخراج اطلاعات دستگاه (Fingerprinting)
 user_agent = st_javascript("navigator.userAgent")
 
 if 'arrival_time' not in st.session_state:
@@ -75,14 +74,12 @@ def get_comprehensive_risk(t, a, al, se, ls, rt, b_rt, text, hour, dep_vel, nudg
     nudge_fail = 30 if nudge_rt < 500 else 0
     entropy = calculate_entropy(rt, b_rt, pattern)
     
-    # محاسبه ریسک تکانشگری بر اساس سرعت پاسخ‌دهی به کل صفحه (مورد ۲)
     impulsivity_entropy = 25 if time_on_page < 10 else 0 
     
     diss_trigger = (1200 / max(rt, 1)) * (3.5 if ls >= 3 else 1.0)
     keywords = ["inutile", "fallimento", "sparire", "vuoto", "anagrafe"]
     text_risk = 25 if any(w in str(text).lower() for w in keywords) else 0
     
-    # پایداری جغرافیایی و دستگاه (مورد ۳)
     device_risk = 30 if dev_chg else 0
     
     total_score = (latent_base * 0.25) + (diss_trigger * 5) + baseline_alert + circadian_risk + acceleration_risk + nudge_fail + (entropy * 0.2) + text_risk + somatic_risk + impulsivity_entropy + device_risk
@@ -109,11 +106,27 @@ st.sidebar.markdown("---")
 st.sidebar.header("Baseline Utente")
 base_rt = st.sidebar.number_input("Tempo medio di reazione abituale (ms)", 100, 2000, int(default_vals["base_rt"]))
 
-# داده‌های فنی مخفی در سایدبار برای شفافیت مرکز داده
 st.sidebar.markdown("---")
 st.sidebar.header("🛰️ Nexus Telemetry (Dati Tecnici)")
 st.sidebar.text(f"IP: {client_ip}")
 st.sidebar.text(f"Ora d'ingresso: {st.session_state.entry_hour}:00")
+
+# --- تابع ثبت داده در Google Sheets (دیتابیس Nexus) ---
+def save_to_nexus_gsheet(data_dict):
+    try:
+        # ایجاد اتصال به شیت
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        # خواندن دیتای فعلی برای حفظ ساختار
+        existing_data = conn.read(worksheet="Sheet1")
+        new_row = pd.DataFrame([data_dict])
+        # ترکیب دیتای قدیم و جدید
+        updated_df = pd.concat([existing_data, new_row], ignore_index=True)
+        # بروزرسانی در گوگل شیت
+        conn.update(worksheet="Sheet1", data=updated_df)
+        return True
+    except Exception as e:
+        st.sidebar.error(f"Errore connessione DB: {e}")
+        return False
 
 # Monitoring
 st.header("Monitoraggio in tempo reale e analisi entropica")
@@ -146,6 +159,27 @@ current_duration = time.time() - st.session_state.arrival_time
 # --- Executive Summary ---
 risk_score, status = get_comprehensive_risk(trauma, attachment, alexithymia, self_esteem, loss_streak, rt, base_rt, chat, hour_of_day, deposit_velocity, nudge_response_time, bet_pattern, is_device_changed, current_duration)
 
+# --- منطق ثبت خودکار در دیتابیس Nexus ---
+# آماده‌سازی ۱۶ ستون مورد نظر کاربر
+nexus_entry = {
+    "user_id": f"ALVANI_{int(time.time())}", 
+    "date": datetime.now().strftime("%Y-%m-%d"),
+    "actual_crime_date": (datetime.now() + pd.Timedelta(days=14)).strftime("%Y-%m-%d"),
+    "trauma": trauma,
+    "attachment": attachment,
+    "alexithymia": alexithymia,
+    "self_esteem": self_esteem,
+    "loss": loss_streak,
+    "rt": rt,
+    "base_rt": base_rt,
+    "text": chat,
+    "hour": hour_of_day,
+    "dep": deposit_velocity,
+    "nudge": nudge_response_time,
+    "pattern": bet_pattern,
+    "risk_score": risk_score
+}
+
 st.markdown("---")
 st.markdown("### 📋 Executive Summary del Caso Single-User")
 sum_col1, sum_col2, sum_col3 = st.columns(3)
@@ -158,6 +192,13 @@ with sum_col3:
     elif status == "PURPLE": st.warning("🕵️ Azione: Monitoraggio Strategico")
     elif status == "ORANGE": st.warning("🟠 Azione: Intervento Nudge")
     else: st.success("✅ Azione: Nessuna restrizione")
+
+# دکمه ثبت دستی در دیتابیس (برای اطمینان محقق)
+if st.button("🚀 Registra Profilo nel Database Nexus"):
+    if save_to_nexus_gsheet(nexus_entry):
+        st.success("Dati inviati con موفقیت!")
+    else:
+        st.error("Errore nell'invio dei dati.")
 
 # Trend Chart
 st.session_state.risk_history.append(risk_score)
@@ -174,7 +215,6 @@ if uploaded:
     df = pd.read_csv(uploaded)
     results_score, results_status = [], []
     for _, row in df.iterrows():
-        # در تحلیل گروهی، پارامترهای جدید به صورت پیش‌فرض لحاظ می‌شوند
         r, s = get_comprehensive_risk(row["trauma"], row["attachment"], row["alexithymia"], row["self_esteem"], row["loss"], row["rt"], row["base_rt"], row["text"], row["hour"], row["dep"], row["nudge"], row["pattern"], False, 15)
         results_score.append(r)
         results_status.append(s)
@@ -266,7 +306,6 @@ if uploaded:
             st.rerun()
 
 # --- بخش ثبت نهایی در دیتابیس Nexus (مخفی) ---
-# این بخش داده‌های جمع‌آوری شده را آماده ذخیره‌سازی می‌کند
 nexus_log = {
     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     "ip": client_ip,
@@ -275,7 +314,6 @@ nexus_log = {
     "trauma": trauma,
     "alexithymia": alexithymia
 }
-# در محیط واقعی، اینجا کد اتصال به دیتابیس (SQL/Google Sheets) قرار می‌گیرد.
 
 # --- دکمه دانلود کد در سایدبار ---
 st.sidebar.markdown("---")
