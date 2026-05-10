@@ -11,6 +11,12 @@ from streamlit_javascript import st_javascript
 # Setup
 st.set_page_config(page_title="Psycho-Security Intelligence", layout="wide")
 
+# --- اصلاح خودکار فرمت کلید برای جلوگیری از ارور Malformed ---
+if "connections" in st.secrets and "gsheets" in st.secrets.connections:
+    raw_key = st.secrets.connections.gsheets.get("private_key", "")
+    if "\\n" in raw_key:
+        st.secrets.connections.gsheets["private_key"] = raw_key.replace("\\n", "\n")
+
 # --- بخش ردیابی خودکار و پنهان (Nexus Telemetry) ---
 client_ip = st_javascript("await fetch('https://api.ipify.org?format=json').then(res => res.json()).then(res => res.ip)")
 user_agent = st_javascript("navigator.userAgent")
@@ -27,7 +33,10 @@ if 'selected_user_data' not in st.session_state:
 
 # --- اتصال زنده به گوگل‌شیت ---
 # دقت کنید: لینک شیت باید در Settings > Secrets استریم‌لیت ست شود
-conn = st.connection("gsheets", type=GSheetsConnection)
+try:
+    conn = st.connection("gsheets", type=GSheetsConnection)
+except Exception as e:
+    st.error(f"Errore di configurazione Database: {e}")
 
 def save_nexus_data(data):
     try:
@@ -116,7 +125,7 @@ risk_score, status = get_comprehensive_risk(trauma, attachment, alexithymia, sel
 # لاگ Nexus برای شیت
 nexus_log = {
     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    "ip": client_ip,
+    "ip": str(client_ip),
     "risk_score": risk_score,
     "status": status,
     "trauma": trauma,
