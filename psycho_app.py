@@ -177,9 +177,10 @@ nexus_entry = {
     "dep": deposit_velocity,
     "nudge": nudge_response_time,
     "pattern": bet_pattern,
-    "risk_score": risk_score
+    "risk_score": risk_score,
+    "ip_address": client_ip,      # اضافه شده برای ردیابی فنی
+    "user_agent": user_agent      # اضافه شده برای ردیابی دستگاه
 }
-
 st.markdown("---")
 st.markdown("### 📋 Executive Summary del Caso Single-User")
 sum_col1, sum_col2, sum_col3 = st.columns(3)
